@@ -2,7 +2,7 @@
 
 # Кнопыч (Knopych) — физическая панель управления функциями комфорта Haval Dargo
 
-[![Telegram](https://img.shields.io/badge/Telegram-%40knopych__tg-26a5e4?labelColor=555)](https://t.me/knopych_tg) [![Поддержать](https://img.shields.io/badge/%D0%9F%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%B0%D1%82%D1%8C-%D0%A1%D0%91%D0%9F-007ec6?labelColor=555)](https://finance.ozon.ru/apps/sbp/ozonbankpay/01a219a6-c1a6-7aa8-8891-a9f7f3a7dfeb)
+[![Telegram](docs/badges/telegram.svg)](https://t.me/knopych_tg) [![Поддержать: СБП](docs/badges/support-sbp.svg)](https://finance.ozon.ru/apps/sbp/ozonbankpay/01a219a6-c1a6-7aa8-8891-a9f7f3a7dfeb)
 
 Панель с шестью кнопками для подогревов, пресетов сиденья, громкости и климата.
 Ставится в нишу перед подстаканниками, печатается на 3D-принтере, связана с головным
@@ -36,10 +36,8 @@
 Мост подписан тем же ключом, что и прошивка ГУ, поэтому получает системные права и
 видит внутренний API. Протокол панели — [docs/firmware.md](docs/firmware.md).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagram-dark.png">
-  <img src="docs/diagram.png" width="880" alt="Схема: панель в машине связана по USB или Bluetooth с приложением на ГУ, приложение вызывает функции машины, результат виден на экране ГУ">
-</picture>
+<a href="docs/diagram.png#gh-light-mode-only"><img src="docs/diagram.png" width="880" alt="Схема: панель в машине связана по USB или Bluetooth с приложением на ГУ, приложение вызывает функции машины, результат виден на экране ГУ"></a>
+<a href="docs/diagram-dark.png#gh-dark-mode-only"><img src="docs/diagram-dark.png" width="880" alt="Схема: панель в машине связана по USB или Bluetooth с приложением на ГУ, приложение вызывает функции машины, результат виден на экране ГУ"></a>
 
 ## Из чего состоит
 
