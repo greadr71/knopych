@@ -80,7 +80,7 @@ label{font-size:13px;color:var(--mute);display:flex;gap:6px;align-items:center;m
   <div class="row" style="margin-top:8px"><button onclick="cmd('vol -1')">−</button>
     <div class="val mut" id="knob">1 шаг</div>
     <button onclick="cmd('vol 1')">+</button></div>
-  <div class="mut">климат открыт: «Нажать» + «−/+» — вентилятор (удержание 0.6 с), просто «−/+» — уставка. Закрыт: «−/+» — громкость.</div>
+  <div class="mut">климат открыт: «Нажать» + «−/+» — вентилятор (удержание 0.6 с), просто «−/+» — температура. Закрыт: «−/+» — громкость.</div>
 </div>
 <div class="card">
   <h2>ЭКРАН</h2>

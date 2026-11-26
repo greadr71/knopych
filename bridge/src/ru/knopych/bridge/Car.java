@@ -341,7 +341,7 @@ final class Car {
         hvacFn.setHvacFunctionValue(id, value);
     }
 
-    /** Абсолютная уставка водителя, как штатная шкала: 38 = °C×10 и сразу за ним кадр отпускания 38 = −10. */
+    /** Абсолютная температура водителя, как штатная шкала: 38 = °C×10 и сразу за ним кадр отпускания 38 = −10. */
     void setHvacTempAbsolute(int raw) throws Exception {
         Log.i(TAG, "setHvacFunctionValue(38, " + raw + ") + release -10");
         hvacFn.setHvacFunctionValue(TEMP_DRIVER_SET, raw);

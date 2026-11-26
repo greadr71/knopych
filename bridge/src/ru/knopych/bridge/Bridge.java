@@ -43,7 +43,7 @@ final class Bridge implements Car.Listener {
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     /** Команды, которые не трогают машину и могут быть долгими (сеть, BLE, USB). */
     private final ExecutorService misc = Executors.newCachedThreadPool();
-    /** Крутилка (уставка климата, вентилятор, громкость) — строго по очереди; отложенная сверка тоже здесь. */
+    /** Крутилка (температура климата, вентилятор, громкость) — строго по очереди; отложенная сверка тоже здесь. */
     private final ScheduledExecutorService serial = Executors.newSingleThreadScheduledExecutor();
     private final CopyOnWriteArrayList<StateListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean statePending = new AtomicBoolean();
@@ -463,7 +463,7 @@ final class Bridge implements Car.Listener {
         return s + " -> " + hvacValue(id);
     }
 
-    /** climate abs <°C> — уставка водителя абсолютом, как штатная шкала: 38 = значение и сразу −10; читаем 16 до и через 450 мс. */
+    /** climate abs <°C> — температура водителя абсолютом, как штатная шкала: 38 = значение и сразу −10; читаем 16 до и через 450 мс. */
     private String climateAbs(String v) throws Exception {
         float c = Float.parseFloat(v);
         int raw = Math.max(Car.TEMP_MIN, Math.min(Car.TEMP_MAX, Math.round(c * 10f)));
@@ -564,7 +564,7 @@ final class Bridge implements Car.Listener {
     }
 
     /**
-     * Шаг уставки водителя: dir > 0 — теплее. На пределе не шагает (шаг всё равно ничего не меняет).
+     * Шаг температуры водителя: dir > 0 — теплее. На пределе не шагает (шаг всё равно ничего не меняет).
      * Возвращает «230 (23.0C) -> 235 (23.5C)» для ответа команды.
      */
     private String tempStep(int dir) throws Exception {
@@ -580,12 +580,12 @@ final class Bridge implements Car.Listener {
             note("климат: шаг не принят с первого раза, повтор");
             car.hvacStep(up);
             now = waitHvac(Car.TEMP_DRIVER, want);
-            if (now != want) note("климат: уставка не изменилась: " + tempText(was) + " -> " + tempText(now));
+            if (now != want) note("климат: температура не изменилась: " + tempText(was) + " -> " + tempText(now));
         }
         return tempText(was) + " -> " + tempText(now);
     }
 
-    /** Шаг уставки с крутилки: dir > 0 — теплее. Абсолют в 38 (как штатная шкала), сверка — после серии. */
+    /** Шаг температуры с крутилки: dir > 0 — теплее. Абсолют в 38 (как штатная шкала), сверка — после серии. */
     void climateTemp(int dir) {
         serial.execute(() -> {
             if (!car.isReady()) return;
@@ -602,7 +602,7 @@ final class Bridge implements Car.Listener {
                 climate.refreshScreen();
                 checkTempLater();
             } catch (Throwable t) {
-                note("климат: уставка: " + t);
+                note("климат: температура: " + t);
             }
         });
     }
@@ -629,11 +629,11 @@ final class Bridge implements Car.Listener {
             for (int i = 0; i < steps; i++) car.hvacStep(tempWant > got ? Car.TEMP_DRIVER_UP : Car.TEMP_DRIVER_DOWN);
             int now = hvacValue(Car.TEMP_DRIVER);
             if (now != tempWant) {
-                note("климат: уставка " + tempText(now) + ", ждали " + tempText(tempWant));
+                note("климат: температура " + tempText(now) + ", ждали " + tempText(tempWant));
                 tempWant = -1; // разошлось — следующий щелчок читает машину заново
             }
         } catch (Throwable t) {
-            note("климат: сверка уставки: " + t);
+            note("климат: сверка температуры: " + t);
         }
     }
 
@@ -963,7 +963,7 @@ final class Bridge implements Car.Listener {
     }
 
     /**
-     * Вращение с энкодера панели. Климат открыт — шаг уставки, закрыт — громкость (решает Climate);
+     * Вращение с энкодера панели. Климат открыт — шаг температуры, закрыт — громкость (решает Climate);
      * дедуп двух каналов тоже там. Сами шаги идут в очередь serial, а не в misc.
      */
     void onEspVolume(final int delta) {
