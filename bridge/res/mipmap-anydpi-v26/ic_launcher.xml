@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Адаптивная иконка «Кнопыч»: лаунчер сам вырезает маску.
+     кейкап 76x72 r13, грань 64x54 r9, обод 6, стенка 12, буква К высотой 40, весь арт сжат в безопасную зону 66 из 108.
+     Пересобрать: python3 reports/ui/gen_icon.py -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

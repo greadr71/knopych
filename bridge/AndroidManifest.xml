@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- @SHARED_USER@ заменяется скриптом сборки: вариант system — android:sharedUserId="android.uid.system", вариант sig — пусто -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ru.knopych.bridge"
+    @SHARED_USER@
+    android:versionCode="48"
+    android:versionName="0.48">
+
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
+
+    <!-- те же разрешения, что у штатного экрана климата (com.gwmv3.vehicle) -->
+    <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION" />
+    <uses-permission android:name="android.car.permission.CONTROL_CAR_CLIMATE" />
+    <!-- громкость медиа через AptivCarAudio (setStreamVolume реальную громкость не меняет) -->
+    <uses-permission android:name="android.car.permission.CAR_CONTROL_AUDIO_VOLUME" />
+    <uses-permission android:name="com.aptiv.car.POWER_PERMISSION" />
+    <!-- температура за бортом, режим питания -->
+    <uses-permission android:name="android.car.permission.CAR_EXTERIOR_ENVIRONMENT" />
+    <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
+    <uses-permission android:name="android.car.permission.CAR_ENGINE_DETAILED" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- плашка поверх любого экрана (uid 1000 проходит проверку alert-окон) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- сторож режима климата: getRunningTasks(1) — какой экран сверху -->
+    <uses-permission android:name="android.permission.GET_TASKS" />
+    <uses-permission android:name="android.permission.REAL_GET_TASKS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- v0.2: связь с Mac по Wi-Fi, обновление себя, adb по Wi-Fi -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_LOGS" />
+    <!-- v0.2: панель ESP по USB, проверка BLE -->
+    <uses-permission android:name="android.permission.MANAGE_USB" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <application android:label="Кнопыч" android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher">
+        <uses-library android:name="aptiv.core" android:required="false" />
+        <uses-library android:name="aptiv.support.car" android:required="false" />
+
+        <activity android:name=".MainActivity" android:exported="true"
+            android:label="Кнопыч"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:screenOrientation="landscape"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Android Automotive: экран можно показывать в движении. Учитывается только для
+                 приложений из «разрешённых источников» — проверить в машине. -->
+            <meta-data android:name="distractionOptimized" android:value="true" />
+        </activity>
+
+        <service android:name=".BridgeService" android:exported="false" />
+
+        <receiver android:name=".CommandReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="ru.knopych.bridge.CMD" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- после обновления по Wi-Fi мост запускается сам -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

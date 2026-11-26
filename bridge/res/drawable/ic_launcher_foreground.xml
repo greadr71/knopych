@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «Кнопыч»: один кейкап с буквой К, foreground для adaptive-иконки.
+     кейкап 76x72 r13, грань 64x54 r9, обод 6, стенка 12, буква К высотой 40. Весь арт сжат в безопасную зону 66 из 108.
+     Стенка #8F3F17, грань #D66024, буква #121418 контуром Press Start 2P.
+     Пересобрать: python3 reports/ui/gen_icon.py -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="7.11" android:translateY="7.11" android:scaleX="0.87" android:scaleY="0.87">
+        <path android:fillColor="#8F3F17" android:pathData="M29,18 H79 A13.0,13.0 0 0 1 92,31 V77 A13.0,13.0 0 0 1 79,90 H29 A13.0,13.0 0 0 1 16,77 V31 A13.0,13.0 0 0 1 29,18 Z" />
+        <path android:fillColor="#D66024" android:pathData="M31,24 H77 A9.0,9.0 0 0 1 86,33 V69 A9.0,9.0 0 0 1 77,78 H31 A9.0,9.0 0 0 1 22,69 V33 A9.0,9.0 0 0 1 31,24 Z" />
+        <group android:translateX="54" android:translateY="76.7" android:scaleX="3.33" android:scaleY="3.33">
+            <path android:fillColor="#121418" android:pathData="M-0.86 -10.29H0.86V-8.57H2.57V-6.86H4.29V-3.43H6V-1.71H2.57V-3.43H0.86V-6.86H-2.57V-1.71H-6V-13.71H-2.57V-8.57H-0.86ZM6 -13.71V-12H4.29V-10.29H0.86V-12H2.57V-13.71Z" />
+        </group>
+    </group>
+</vector>
