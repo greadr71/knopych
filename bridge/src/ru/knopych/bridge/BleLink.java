@@ -11,32 +11,26 @@ import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
-import android.util.Log;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Locale;
 import java.util.UUID;
 
 /**
  * Панель по BLE: GATT-клиент, подключение по MAC (без скана — не нужен ACCESS_FINE_LOCATION).
  *
- * Протокол тот же, что по USB, но у LEDS кодировка другая — см. прошивку
- * v1/firmware/knopych-panel/knopych-panel.ino:
+ * Протокол тот же, что по USB:
  *   сервис  6d656368-6275-7474-0001-000000000000;
- *   BUTTONS …-0002 read+notify, ASCII «btn N» / «long N» (без «!» — его добавляет только USB);
- *   LEDS    …-0003 read+write, ШЕСТЬ БАЙТ ступеней 0..3, не текст: LedsCb::onWrite
- *           (скетч, строки 144-155 и 363-370) принимает байты как уровни.
+ *   BUTTONS …-0002 read+notify, ASCII «btn N» / «long N» (без «!» — его добавляет только USB).
  * Сопряжения нет, характеристики без шифрования.
  *
  * Подключение: connectGatt(autoConnect=true) — стек сам ждёт плату и переподключает;
  * плюс повтор из тика сервиса (BridgeService, 3 с), если GATT закрыт после ошибки
  * (status 133 — обычный сбой первого коннекта на Android).
  */
-final class BleLink implements Bridge.StateListener {
+final class BleLink {
     private static final UUID SERVICE = UUID.fromString("6d656368-6275-7474-0001-000000000000");
     private static final UUID BUTTONS = UUID.fromString("6d656368-6275-7474-0002-000000000000");
-    private static final UUID LEDS = UUID.fromString("6d656368-6275-7474-0003-000000000000");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     /** Ключ в тех же prefs («bridge»), что и остальные настройки. Пусто = BLE выключен. */
     static final String PREF_MAC = "ble_mac";
@@ -56,13 +50,12 @@ final class BleLink implements Bridge.StateListener {
     private final SharedPreferences prefs;
 
     private volatile BluetoothGatt gatt;
-    private volatile BluetoothGattCharacteristic chButtons, chLeds;
+    private volatile BluetoothGattCharacteristic chButtons;
     private volatile boolean connected;
     /** notify включён: CCCD записан успешно. Только тогда кнопки реально дойдут. */
     private volatile boolean notifyOn;
     private volatile int lastStatus = -1;
     private volatile long lastAttempt;
-    private String lastLeds = "";
 
     BleLink(Context ctx, Bridge bridge) {
         this.ctx = ctx.getApplicationContext();
@@ -73,7 +66,6 @@ final class BleLink implements Bridge.StateListener {
     String mac() { return prefs.getString(PREF_MAC, ""); }
 
     void start() {
-        bridge.addListener(this);
         if (!mac().isEmpty()) connect();
     }
 
@@ -124,7 +116,6 @@ final class BleLink implements Bridge.StateListener {
         BluetoothGatt g = gatt;
         gatt = null;
         chButtons = null;
-        chLeds = null;
         boolean was = connected;
         connected = false;
         notifyOn = false;
@@ -136,7 +127,6 @@ final class BleLink implements Bridge.StateListener {
     }
 
     void stop() {
-        bridge.removeListener(this);
         close("мост остановлен");
     }
 
@@ -173,7 +163,6 @@ final class BleLink implements Bridge.StateListener {
         connected = false;
         notifyOn = false;
         chButtons = null;
-        chLeds = null;
         bridge.note("BLE: отключена (status=" + status + ")");
         gatt = null;
         try { g.disconnect(); } catch (Throwable ignored) { }
@@ -194,9 +183,8 @@ final class BleLink implements Bridge.StateListener {
             return;
         }
         chButtons = s.getCharacteristic(BUTTONS);
-        chLeds = s.getCharacteristic(LEDS);
-        if (chButtons == null || chLeds == null) {
-            close("не нашла LEDS/BUTTONS");
+        if (chButtons == null) {
+            close("не нашла BUTTONS");
             return;
         }
         g.setCharacteristicNotification(chButtons, true);
@@ -217,8 +205,6 @@ final class BleLink implements Bridge.StateListener {
         }
         notifyOn = true;
         bridge.note("BLE: notify на BUTTONS включён");
-        lastLeds = ""; // после разрыва плата вернулась в local — шлём светодиоды заново
-        onState(bridge.state());
         bridge.refreshSoon();
     }
 
@@ -235,40 +221,6 @@ final class BleLink implements Bridge.StateListener {
         }
     }
 
-    /** Светодиоды: те же шесть ступеней, что по USB, но байтами (см. шапку класса). */
-    @Override public synchronized void onState(Bridge.State st) {
-        if (!connected || gatt == null || chLeds == null || st == null || st.time == 0) return;
-        int[] lv = EspLink.levels(st);
-        String key = Arrays.toString(lv);
-        if (key.equals(lastLeds)) return;
-        lastLeds = key;
-        write(lv);
-    }
-
-    /**
-     * Отправить уровни как есть, минуя сравнение с последним отправленным (мигание кнопки).
-     * Кэш всё равно обновляем, иначе следующее состояние не совпадёт с платой.
-     */
-    synchronized void sendLevels(int[] lv) {
-        if (!connected || gatt == null || chLeds == null) return;
-        lastLeds = Arrays.toString(lv);
-        write(lv);
-    }
-
-    private void write(int[] lv) {
-        BluetoothGatt g = gatt;
-        BluetoothGattCharacteristic c = chLeds;
-        if (!connected || g == null || c == null) return;
-        byte[] v = new byte[lv.length]; // 6 байт — влезает в один пакет, дробить не нужно
-        for (int i = 0; i < lv.length; i++) v[i] = (byte) lv[i];
-        c.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT); // PROPERTY_WRITE, без ответа нельзя
-        c.setValue(v);
-        if (!g.writeCharacteristic(c)) {
-            lastLeds = ""; // стек занят предыдущей записью — повторим на следующем состоянии
-            Log.w(Bridge.TAG, "BLE write: не отправлено");
-        }
-    }
-
     String describe() {
         String m = mac();
         StringBuilder b = new StringBuilder();
@@ -278,8 +230,7 @@ final class BleLink implements Bridge.StateListener {
         b.append('\n').append("MAC: ").append(m.isEmpty() ? "-" : m).append('\n');
         BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
         b.append("bluetooth: ").append(a == null ? "нет" : a.isEnabled() ? "включён" : "выключен").append('\n');
-        b.append("notify: ").append(notifyOn ? "да" : "нет").append('\n');
-        b.append("последние leds: ").append(lastLeds.isEmpty() ? "-" : lastLeds);
+        b.append("notify: ").append(notifyOn ? "да" : "нет");
         return b.toString();
     }
 }

@@ -21,13 +21,13 @@ import java.util.ArrayDeque;
  * Панель кнопок ESP32-S3 в USB-порту ГУ (ГУ — USB host).
  * Родной USB ESP32-S3 виден как «USB JTAG_serial debug unit» 303a:1001, класс CDC-ACM
  * (проверено с Mac 2026-11-08). Протокол — текстовые строки, см. docs/firmware.md:
- * плата шлёт «!btn N», мост шлёт «leds a b c d e f».
+ * плата шлёт «!btn N».
  *
  * Своя минимальная реализация CDC-ACM поверх UsbManager: найти интерфейс данных (класс 10),
  * два bulk-конца, выставить DTR/RTS как это делает Mac (pyserial). Открытие порта плату
- * не перезагружает, поэтому начинаем с ping/state, а не ждём !hello.
+ * не перезагружает, поэтому начинаем с ping, а не ждём !hello.
  */
-final class EspLink implements Bridge.StateListener {
+final class EspLink {
     static final int VID_ESPRESSIF = 0x303a;
     private static final String ACTION_PERM = "ru.knopych.bridge.USB_PERMISSION";
 
@@ -43,7 +43,6 @@ final class EspLink implements Bridge.StateListener {
     private volatile boolean connected;
     private Thread reader;
     private String hello = "";
-    private String lastLeds = "";
     private long lastScan;
 
     EspLink(Context ctx, Bridge bridge) {
@@ -69,7 +68,6 @@ final class EspLink implements Bridge.StateListener {
                 }
             }
         }, f);
-        bridge.addListener(this);
         scanSoon();
     }
 
@@ -144,12 +142,10 @@ final class EspLink implements Bridge.StateListener {
         }
         device = d; conn = c; dataIf = data; in = ein; out = eout;
         connected = true;
-        lastLeds = "";
         bridge.note("ESP: подключена " + describeDevice(d));
         reader = new Thread(this::readLoop, "esp-read");
         reader.start();
         send("ping");
-        onState(bridge.state()); // сразу показать реальное состояние
         bridge.refreshSoon();
     }
 
@@ -203,53 +199,8 @@ final class EspLink implements Bridge.StateListener {
             }
         } else if (s.startsWith("!hello") || s.startsWith("!pong")) {
             hello = s;
-            if (s.startsWith("!hello")) { // плата перезагрузилась — светодиоды заново
-                lastLeds = "";
-                onState(bridge.state());
-            }
         }
     }
-
-    /** Светодиоды в порядке кнопок панели: пресет 1..3, сиденье вод., лобовое, сиденье пасс. */
-    @Override
-    public void onState(Bridge.State st) {
-        if (!connected || st == null || st.time == 0) return;
-        String cmd = ledsCmd(levels(st));
-        if (cmd.equals(lastLeds)) return;
-        lastLeds = cmd;
-        send(cmd);
-    }
-
-    /**
-     * Отправить уровни как есть, минуя сравнение с последним отправленным (мигание кнопки).
-     * Кэш всё равно обновляем, иначе следующее состояние не совпадёт с платой.
-     */
-    synchronized void sendLevels(int[] lv) {
-        if (!connected) return;
-        lastLeds = ledsCmd(lv);
-        send(lastLeds);
-    }
-
-    private static String ledsCmd(int[] lv) {
-        return "leds " + lv[0] + " " + lv[1] + " " + lv[2] + " " + lv[3] + " " + lv[4] + " " + lv[5];
-    }
-
-    /** Шесть ступеней 0..3 в порядке кнопок панели — общая раскладка для USB и BLE. */
-    static int[] levels(Bridge.State st) {
-        return new int[] { preset(st, 0), preset(st, 1), preset(st, 2),
-                lv(st.seatDriver), lv(st.windshield), lv(st.seatPassenger) };
-    }
-
-    /**
-     * Слот памяти: сама машина отдаёт три состояния — 0 пусто, 1 сохранено, 2 сохранено и сейчас
-     * активно (штатный UI рисует 2 как «включено», 1 как «сохранено»). Горит только активный слот;
-     * пустой, неактивный или не прочитавшийся — 0.
-     */
-    private static int preset(Bridge.State st, int i) {
-        return st.seatMemory != null && i < st.seatMemory.length && st.seatMemory[i] == 2 ? 1 : 0;
-    }
-
-    private static int lv(int v) { return v < 0 ? 0 : v; }
 
     synchronized void send(String s) {
         if (!connected) return;
@@ -260,9 +211,8 @@ final class EspLink implements Bridge.StateListener {
 
     boolean isConnected() { return connected; }
 
-    /** Перед остановкой моста: вернуть плату в local, чтобы кнопки работали сами. */
+    /** Перед остановкой моста: закрыть порт. */
     void stop() {
-        if (connected) send("local");
         close("мост остановлен");
     }
 
@@ -278,7 +228,6 @@ final class EspLink implements Bridge.StateListener {
         StringBuilder b = new StringBuilder();
         b.append("ESP: ").append(connected ? "подключена " + describeDevice(device) : "нет").append('\n');
         b.append("hello: ").append(hello).append('\n');
-        b.append("последние leds: ").append(lastLeds).append('\n');
         b.append("от платы:\n");
         synchronized (lines) { for (String s : lines) b.append("  ").append(s).append('\n'); }
         return b.toString();

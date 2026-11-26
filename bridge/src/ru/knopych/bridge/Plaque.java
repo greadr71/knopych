@@ -89,6 +89,32 @@ final class Plaque {
         });
     }
 
+    /** Слот положения сиденья: три кейкапа в ряд, выбранный slot (1..3) — оранжевый. Без подписи. */
+    static void showPreset(Context ctx, int slot) {
+        showPreset(ctx, slot, null);
+    }
+
+    /** Тот же ряд с подписью: подтверждение сохранения слота. */
+    static void showPreset(Context ctx, int slot, String text) {
+        fill(ctx, (c, r) -> {
+            int cur = Math.max(1, Math.min(3, slot));
+            LinearLayout row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            for (int i = 1; i <= 3; i++) {
+                // кейкап 290×231: 130×104 держит пропорции, VectorDrawable тянется по bounds
+                ImageView ic = icon(c, "kc_seat" + i, 130, 104, false);
+                LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) ic.getLayoutParams();
+                if (i > 1) p.leftMargin = dp(c, 7);   // зазор 14 dp между иконками, края без полей
+                if (i < 3) p.rightMargin = dp(c, 7);
+                if (i == cur) { ic.setColorFilter(ACCENT); ic.setAlpha(1f); }
+                else { ic.setColorFilter(null); ic.setAlpha(0.4f); }
+                row.addView(ic);
+            }
+            r.addView(row);
+            if (text != null) r.addView(caption(c, text));
+        });
+    }
+
     /** Отладка: размеры окна и детей после раскладки (popup sizes). */
     static void sizes(Context ctx) {
         showSeat(ctx, false, 3);

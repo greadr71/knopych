@@ -43,11 +43,11 @@ final class Bridge implements Car.Listener {
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     /** Команды, которые не трогают машину и могут быть долгими (сеть, BLE, USB). */
     private final ExecutorService misc = Executors.newCachedThreadPool();
-    /** Крутилка (температура климата, вентилятор, громкость) — строго по очереди; отложенная сверка тоже здесь. */
+    /** Крутилка (уставка климата, вентилятор, громкость) — строго по очереди; отложенная сверка тоже здесь. */
     private final ScheduledExecutorService serial = Executors.newSingleThreadScheduledExecutor();
     private final CopyOnWriteArrayList<StateListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean statePending = new AtomicBoolean();
-    /** Последнее прочитанное состояние машины (для экрана и светодиодов ESP). */
+    /** Последнее прочитанное состояние машины (для экрана и плашек). */
     private volatile State state = new State();
     /** Крутилка: режим климата, пока экран климата открыт (экран сам шлёт VISIBLE/INVISIBLE). */
     private final Climate climate;
@@ -95,8 +95,6 @@ final class Bridge implements Car.Listener {
     private long lastStateBroadcast;
     private float lastTemp = Float.NaN;
     private final AtomicBoolean tickPending = new AtomicBoolean();
-    /** Последнее удержание реально сработало в машине (только поток worker). */
-    private boolean holdOk;
     /** Дедуп кнопок: одно нажатие панель шлёт и в USB, и в BLE сразу. */
     private static final long BTN_DUP_MS = 300;
     private long lastBtnMs, lastLongMs;
@@ -228,7 +226,7 @@ final class Bridge implements Car.Listener {
             case "log":
                 return dumpLog();
             case "popup": {
-                // отладка плашки: popup <текст> | popup seat 0..3 | popup seat_pass 0..3 | popup wind on|off
+                // отладка плашки: popup <текст> | popup seat 0..3 | popup seat_pass 0..3 | popup wind on|off | popup preset 1..3 [saved|failed]
                 String[] w = arg.split("\\s+");
                 if (w.length > 1 && w[0].equals("seat")) {
                     Plaque.showSeat(ctx, false, Integer.parseInt(w[1]));
@@ -243,8 +241,18 @@ final class Bridge implements Car.Listener {
                     Plaque.showWindshield(ctx, on);
                     return "плашка: лобовое " + (on ? "вкл" : "выкл");
                 }
+                if (w.length > 1 && w[0].equals("preset")) {
+                    int n = Integer.parseInt(w[1]);
+                    String state = w.length > 2 ? w[2] : "";
+                    String cap = state.equals("saved") ? "Слот " + n + " сохранён"
+                            : state.equals("failed") ? "Слот " + n + " не сохранён" : "";
+                    if (state.isEmpty()) { Plaque.showPreset(ctx, n); return "плашка: пресет " + n; }
+                    if (cap.isEmpty()) return "popup preset 1..3 [saved|failed]";
+                    Plaque.showPreset(ctx, n, cap);
+                    return "плашка: пресет " + n + ", " + cap;
+                }
                 if (arg.equals("sizes")) { Plaque.sizes(ctx); return "плашка sizes: размеры в журнале"; }
-                if (arg.isEmpty()) return "popup <текст> | popup seat 0..3 | popup seat_pass 0..3 | popup wind on|off";
+                if (arg.isEmpty()) return "popup <текст> | popup seat 0..3 | popup seat_pass 0..3 | popup wind on|off | popup preset 1..3 [saved|failed]";
                 Plaque.show(ctx, arg);
                 return "плашка: " + arg;
             }
@@ -463,7 +471,7 @@ final class Bridge implements Car.Listener {
         return s + " -> " + hvacValue(id);
     }
 
-    /** climate abs <°C> — температура водителя абсолютом, как штатная шкала: 38 = значение и сразу −10; читаем 16 до и через 450 мс. */
+    /** climate abs <°C> — уставка водителя абсолютом, как штатная шкала: 38 = значение и сразу −10; читаем 16 до и через 450 мс. */
     private String climateAbs(String v) throws Exception {
         float c = Float.parseFloat(v);
         int raw = Math.max(Car.TEMP_MIN, Math.min(Car.TEMP_MAX, Math.round(c * 10f)));
@@ -564,7 +572,7 @@ final class Bridge implements Car.Listener {
     }
 
     /**
-     * Шаг температуры водителя: dir > 0 — теплее. На пределе не шагает (шаг всё равно ничего не меняет).
+     * Шаг уставки водителя: dir > 0 — теплее. На пределе не шагает (шаг всё равно ничего не меняет).
      * Возвращает «230 (23.0C) -> 235 (23.5C)» для ответа команды.
      */
     private String tempStep(int dir) throws Exception {
@@ -580,12 +588,12 @@ final class Bridge implements Car.Listener {
             note("климат: шаг не принят с первого раза, повтор");
             car.hvacStep(up);
             now = waitHvac(Car.TEMP_DRIVER, want);
-            if (now != want) note("климат: температура не изменилась: " + tempText(was) + " -> " + tempText(now));
+            if (now != want) note("климат: уставка не изменилась: " + tempText(was) + " -> " + tempText(now));
         }
         return tempText(was) + " -> " + tempText(now);
     }
 
-    /** Шаг температуры с крутилки: dir > 0 — теплее. Абсолют в 38 (как штатная шкала), сверка — после серии. */
+    /** Шаг уставки с крутилки: dir > 0 — теплее. Абсолют в 38 (как штатная шкала), сверка — после серии. */
     void climateTemp(int dir) {
         serial.execute(() -> {
             if (!car.isReady()) return;
@@ -602,7 +610,7 @@ final class Bridge implements Car.Listener {
                 climate.refreshScreen();
                 checkTempLater();
             } catch (Throwable t) {
-                note("климат: температура: " + t);
+                note("климат: уставка: " + t);
             }
         });
     }
@@ -629,11 +637,11 @@ final class Bridge implements Car.Listener {
             for (int i = 0; i < steps; i++) car.hvacStep(tempWant > got ? Car.TEMP_DRIVER_UP : Car.TEMP_DRIVER_DOWN);
             int now = hvacValue(Car.TEMP_DRIVER);
             if (now != tempWant) {
-                note("климат: температура " + tempText(now) + ", ждали " + tempText(tempWant));
+                note("климат: уставка " + tempText(now) + ", ждали " + tempText(tempWant));
                 tempWant = -1; // разошлось — следующий щелчок читает машину заново
             }
         } catch (Throwable t) {
-            note("климат: сверка температуры: " + t);
+            note("климат: сверка уставки: " + t);
         }
     }
 
@@ -963,7 +971,7 @@ final class Bridge implements Car.Listener {
     }
 
     /**
-     * Вращение с энкодера панели. Климат открыт — шаг температуры, закрыт — громкость (решает Climate);
+     * Вращение с энкодера панели. Климат открыт — шаг уставки, закрыт — громкость (решает Climate);
      * дедуп двух каналов тоже там. Сами шаги идут в очередь serial, а не в misc.
      */
     void onEspVolume(final int delta) {
@@ -978,7 +986,6 @@ final class Bridge implements Car.Listener {
                 ensureCar();
                 String s = hold(n);
                 note("кнопка " + n + " удержана: " + s.replace('\n', ' '));
-                if (holdOk) blink(n); // мигаем только когда машина правда приняла действие
             } catch (Throwable t) {
                 note("кнопка " + n + " удержана: ошибка " + t);
             }
@@ -996,46 +1003,11 @@ final class Bridge implements Car.Listener {
     }
 
     private String hold(int n) throws Exception {
-        holdOk = false;
         switch (n) {
             case 1: case 2: case 3: return seatSave(n);
             case 4: return brightnessToggle();
             default: return "долгое удержание у кнопки " + n + " не задано";
         }
-    }
-
-    // ---------- мигание кнопки (подтверждение удержания) ----------
-
-    /** Полный шаг светодиода кнопки — MAX_LEVEL из прошивки (v1/firmware/knopych-panel/knopych-panel.ino:38). */
-    private static final int[] LED_MAX = {1, 1, 1, 3, 1, 3};
-
-    /**
-     * Три коротких мигания кнопкой n: подсветка кнопки на полный шаг и обратно в 0,
-     * затем панель возвращается к реальному состоянию. Только поток worker — он же держит
-     * очередь к машине, поэтому рассылка состояния не может влезть в середину мигания.
-     */
-    private void blink(int n) {
-        if (n < 1 || n > LED_MAX.length) return;
-        Bridge.State st = state;
-        if (st == null || st.time == 0) return; // состояния ещё нет — нечего восстанавливать
-        int[] real = EspLink.levels(st);
-        int[] on = real.clone(), off = real.clone();
-        on[n - 1] = LED_MAX[n - 1];
-        off[n - 1] = 0;
-        for (int i = 0; i < 3; i++) {
-            pushLevels(on);
-            SystemClock.sleep(160);
-            pushLevels(off);
-            SystemClock.sleep(160);
-        }
-        pushLevels(real);
-    }
-
-    private void pushLevels(int[] lv) {
-        EspLink e = esp;
-        if (e != null) e.sendLevels(lv);
-        BleLink b = ble;
-        if (b != null) b.sendLevels(lv);
     }
 
     // Долгое удержание кнопки слота = сохранение текущего положения (штатное ГУ: 155 = 1/2/3),
@@ -1050,11 +1022,15 @@ final class Bridge implements Car.Listener {
         if (r == 1 || r == 3 || r == 5) {
             car.recallSeat(n);
             refreshSoon();
-            holdOk = true; // слот реально сохранён — кнопка подтвердит миганием
+            Plaque.showPreset(ctx, n, "Слот " + n + " сохранён");
             return s + " сохранён (applied)";
         }
-        if (r == 2 || r == 4 || r == 6) return s + " не сохранился (код " + r + ")";
-        if (r == 7) return s + ": машина просит повторить";
+        if (r == 2 || r == 4 || r == 6 || r == 7) {
+            Plaque.showPreset(ctx, n, "Слот " + n + " не сохранён");
+            if (r == 7) return s + ": машина просит повторить";
+            return s + " не сохранился (код " + r + ")";
+        }
+        Plaque.showPreset(ctx, n, "Слот " + n + ": отправлено");
         return s + ": отправлено, код результата " + r;
     }
 
@@ -1062,6 +1038,7 @@ final class Bridge implements Car.Listener {
         switch (n) {
             case 1: case 2: case 3:
                 car.recallSeat(n);
+                Plaque.showPreset(ctx, n);
                 refreshSoon(); // занятость слотов в состоянии
                 return "seat_memory=" + n;
             case 4: {
@@ -1148,7 +1125,6 @@ final class Bridge implements Car.Listener {
         car.setBrightness(v);
         SystemClock.sleep(300);  // значение в машине обновляется не мгновенно
         int now = brightness();
-        holdOk = now == v;       // прочитали ровно то, что просили — запись принята, иначе машина её проигнорировала
         String s = now < 0 ? "brightness: не прочитать" : "brightness=" + now;
         if (now >= 0 && now != v) s += " (просили " + v + ")";
         if (was >= 0) s += " (было " + was + ")";
@@ -1323,5 +1299,5 @@ final class Bridge implements Car.Listener {
             + " | ble_scan [сек] | ui_pad слева сверху | theme [1..4|next|probe] | auto_theme on/off | auto_theme_id 1..4"
             + " | auto_bright on/off"
             + " | getprop [фильтр] | settings [system|secure|global] [фильтр] | dumpsys служба [фильтр]"
-            + " | packages [фильтр] | intents пакет | popup <текст>|<seat N>|<seat_pass N>|<wind on|off>";
+            + " | packages [фильтр] | intents пакет | popup <текст>|<seat N>|<seat_pass N>|<wind on|off>|<preset N [saved|failed]>";
 }

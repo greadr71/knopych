@@ -9,30 +9,20 @@ RECESS (−2,0): верх на 2,0 выше плоскости лица — ст
 края CAP_H+0,26, у правого CAP_H−0,26. Гнездо и стенки при этом вертикальные:
 колодец в лице тоже прямой.
 Оболочка — прямой 17×17 (R2,0) на всю высоту, стенка CAP_WALL, верх TOP_THK.
-Верх — одна плоскость лица, без ступеньки рамки: внутри вместо неё гравирована
-канавка GROOVE_W × GROOVE_D (0,6 × 0,4) по контуру INNER×INNER (R INNER_R) —
-кольцо с центром на бывшем контуре проёма, глубина вдоль нормали лица.
-Скоса внутри нет намеренно: при печати лицом вниз наклонное дно проёма — это
-самоподдерживающийся пандус, касающийся плиты одним краем, а плоское дно проёма —
-потолок, который печатается мостом 14 мм и провисает ровно на лице.
+Верх — одна гладкая плоскость лица, без ступеньки, канавки и окна.
 
 Снизу по центру гнездо MX: бобышка Ø5,5 от рима до потолка оболочки (7,6),
 в ней крестовина 4,2 × 1,37 (CROSS_ARM + CROSS_TOL), вырезанная снизу
 на глубину 7,2. Выше 7,2 ничего не вырезано: над гнездом остаётся верх
 кейкапа не тоньше 1,1.
 
-Окно светодиода — сквозь верх, 3,4×2,4 со скруглением 0,5, центр на +Y
-от центра кейкапа (сторона паза свитча). Окно у всех шести на +Y: у свитча паз
-с юга, иначе светодиод уйдёт под глухой пластик. Кейкапы все одинаковы —
-различие только в Y при расстановке.
-Если у свитча паз с юга — поменять знак у LED_Y одной константой.
+Кейкапы все одинаковы — различие только в Y при расстановке.
 
 Печать FDM, сопло 0,4 мм, слой 0,2 мм, PETG или ASA. Лицом на стол:
 print_stl.py переворачивает кейкапы на 180° и снимает наклон лица 1,72° (как у
 панели), поэтому лицо ложится плоско на текстурированную PEI и получает матовую
-текстуру, приятнее под палец; гнездо открыто вверх. Канавка — просто канал
-0,6 мм, ничего не висит. Мост остаётся только над бобышкой Ø5,5 (потолок гнезда)
-и над окном 2,4 мм.
+текстуру, приятнее под палец; гнездо открыто вверх. Мост остаётся только над
+бобышкой Ø5,5 (потолок гнезда).
 
 Запуск: cad run v2/modeling/keycaps.py
 """
@@ -62,20 +52,6 @@ CROSS_ARM = 1.17
 CROSS_TOL = 0.2
 # Потолок гнезда от рима; выше — сплошной верх кейкапа.
 SOCKET_DEPTH = 7.2
-
-# Окно светодиода: на +Y от центра, сторона паза свитча.
-LED_W = 3.4
-LED_H = 2.4
-LED_R = 0.5
-LED_Y = 5.0
-
-# Верх — плоскость лица. По контуру проёма INNER×INNER (R INNER_R) гравирована
-# канавка: кольцо GROOVE_W с центром на контуре, глубина GROOVE_D вдоль лица.
-FRAME = 1.5
-INNER = CAP - 2 * FRAME
-INNER_R = 0.8
-GROOVE_W = 0.6
-GROOVE_D = 0.4
 
 
 def _surface(x):
@@ -120,7 +96,7 @@ def _outer(edge):
 
 
 def _keycap():
-    """Оболочка со штоком, канавка по контуру проёма и окно светодиода."""
+    """Оболочка со штоком и гладкой плоскостью лица."""
     # Наклон лица: та же плоскость, что top_z(x), но в местной системе у центра.
     beta = -math.degrees(math.atan(TOP_SLOPE))
     face = bd.Pos(0, 0, CAP_H) * bd.Rot(0, beta, 0)
@@ -146,21 +122,6 @@ def _keycap():
     # Нижняя кромка: фаска 0,4×45° только снаружи, в стенке 1,2 остаётся 0,8.
     rim = [edge for edge in cap.edges() if abs(edge.center().Z) < 0.01 and _outer(edge)]
     cap = bd.chamfer(rim, RIM_CHAMFER)
-    # Канавка — кольцо по контуру проёма вниз на GROOVE_D от плоскости лица.
-    # Режется после среза и в той же системе, поэтому глубина вдоль наклона.
-    ring = bd.RectangleRounded(
-        INNER + GROOVE_W, INNER + GROOVE_W, INNER_R + GROOVE_W / 2
-    ) - bd.RectangleRounded(
-        INNER - GROOVE_W, INNER - GROOVE_W, INNER_R - GROOVE_W / 2
-    )
-    groove = bd.Pos(0, 0, -GROOVE_D) * bd.extrude(bd.Plane.XY * ring, GROOVE_D)
-    cap -= face * groove
-    z0 = CAP_H - TOP_THK - 0.1
-    led = bd.Pos(0, LED_Y, z0) * bd.extrude(
-        bd.Plane.XY * bd.RectangleRounded(LED_W, LED_H, LED_R),
-        CAP_H + 1.0 - z0,
-    )
-    cap -= led
     cap.label = "keycap"
     cap.color = "#1c1e22"
     return cap
@@ -191,16 +152,8 @@ def _verify(cap):
     # съедает |TOP_SLOPE|·CAP/2 = 0,25 мм, остаётся ≈ 1,15.
     thin = TOP_THK - abs(TOP_SLOPE) * CAP / 2
     assert thin >= 1.1, thin
-    # Окно светодиода: пусто по всей высоте окна, материал вокруг остаётся.
-    z_led = SOCKET_DEPTH + 0.6  # выше потолка гнезда, ниже лица
-    for py in (LED_Y, LED_Y + LED_H / 2 - 0.2, LED_Y - LED_H / 2 + 0.2):
-        probe = cap & bd.Pos(0, py, z_led) * bd.Box(0.2, 0.2, 0.2)
-        assert not probe.solids(), py
-    assert (cap & bd.Pos(0, LED_Y + 1.9, z_led) * bd.Box(0.2, 0.2, 0.2)).solids()
-    assert (cap & bd.Pos(0, -LED_Y, z_led) * bd.Box(0.2, 0.2, 0.2)).solids()
-    # Верх — ровно плоскость `_surface(x)`, ступеньки рамки больше нет.
-    # y=+5 не годится: там окно светодиода, поэтому (2.5, 5).
-    for px, py in ((0.0, 0.0), (-5.0, 0.0), (5.0, 0.0), (0.0, -5.0), (2.5, 5.0)):
+    # Верх — ровно плоскость `_surface(x)`: сплошной и гладкий, без окна и канавки.
+    for px, py in ((0.0, 0.0), (-5.0, 0.0), (5.0, 0.0), (0.0, -5.0), (0.0, 5.0)):
         column = cap & (
             bd.Pos(px, py, SOCKET_DEPTH + 0.5)
             * bd.Box(
@@ -212,43 +165,16 @@ def _verify(cap):
             (px, py),
             column.bounding_box().max.Z,
         )
-    # Канавка на контуре (x = INNER/2): на GROOVE_D ниже плоскости, по обе
-    # стороны от кольца — снова плоскость.
-    for px, drop in (
-        (INNER / 2, GROOVE_D),
-        (INNER / 2 + GROOVE_W, 0.0),
-        (INNER / 2 - GROOVE_W, 0.0),
-    ):
-        column = cap & (
-            bd.Pos(px, 0, CAP_H - 3)
-            * bd.Box(
-                0.2,
-                0.2,
-                CAP_H + 3,
-                align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN),
-            )
-        )
-        assert column.solids(), px
-        assert abs(column.bounding_box().max.Z - (_surface(px) - drop)) < 0.03, (
-            px,
-            column.bounding_box().max.Z,
-        )
     # Материал над крестовиной в центре: потолок 7,2, лицо 9,0 — 1,8.
     over_cross = _surface(0) - ceiling.bounding_box().min.Z
     assert abs(over_cross - (CAP_H - SOCKET_DEPTH)) < 0.03, over_cross
     assert over_cross >= 1.5, over_cross
-    # Плита над окном LED: потолок полости 7,6, лицо 9,0 — 1,4, у всех одинаково.
-    plate = CAP_H - (CAP_H - TOP_THK)
-    assert plate >= 1.2, plate
-    near = LED_Y - LED_H / 2 - 0.3
-    probe = cap & bd.Pos(0, near, CAP_H - TOP_THK + 0.1) * bd.Box(0.2, 0.2, 0.2)
-    assert probe.solids()
     return cap
 
 
 @model
 def keycap():
-    """Один кейкап: лицо плоско, канавка по контуру проёма, окно светодиода на +Y."""
+    """Один кейкап: верх — гладкая плоскость лица, гнездо MX снизу."""
     return _verify(_keycap())
 
 
@@ -257,8 +183,7 @@ def keycaps():
     """Шесть кейкапов на лице, рим на top_z(x) − CAP_H − RECESS — свой у каждого.
 
     Кейкапы все одинаковы: верх на 2,0 выше плоскости лица (RECESS = −2,0),
-    канавка по контуру проёма. Окно светодиода у всех шести на +Y от центра
-    кнопки — у паза свитча.
+    гладкая плоскость лица без канавки и окна.
     """
     import face as face_part
 
@@ -275,7 +200,6 @@ def keycaps():
 
     for cap, (x, y) in zip(caps, centers):
         rim_z = face_part.top_z(x) - CAP_H - RECESS
-        z_led = rim_z + SOCKET_DEPTH + 0.6
         box = cap.bounding_box()
         assert abs(box.min.Z - rim_z) < 0.01, (cap.label, box.min.Z)
         # Максимум у левого края кейкапа: лицо выше слева. С фаской верхний
@@ -288,7 +212,7 @@ def keycaps():
         # (замер по печати; RECESS — только следствие посадки на свитч).
         lift = rim_z + _surface(0) - face_part.top_z(x)
         assert abs(lift - 2.0) < 0.01, (cap.label, lift)
-        # Верх — плоскость лица; x=4 вне канавки и окна.
+        # Верх — плоскость лица на всём верхе, без канавки и окна.
         for py in (-6.0, 6.0):
             column = cap & (
                 bd.Pos(x + 4.0, y + py, rim_z + SOCKET_DEPTH + 0.5)
@@ -300,11 +224,6 @@ def keycaps():
                 py,
                 column.bounding_box().max.Z,
             )
-        # Окно у всех шести на +Y от центра кнопки; на −Y материал.
-        window = cap & bd.Pos(x, y + LED_Y, z_led) * bd.Box(0.2, 0.2, 0.2)
-        assert not window.solids(), (cap.label, LED_Y)
-        solid = cap & bd.Pos(x, y - LED_Y, z_led) * bd.Box(0.2, 0.2, 0.2)
-        assert solid.solids(), (cap.label, -LED_Y)
 
     for cap in caps:
         common = part & cap
@@ -327,12 +246,9 @@ def keycaps():
         f"фаска низа {RIM_CHAMFER:g}; "
         f"рим z={min(rims):.2f}..{max(rims):.2f} по кейкапам "
         f"({', '.join(f'{z:.2f}' for z in rims)}); "
-        f"канавка {GROOVE_W:g}×{GROOVE_D:g} "
-        f"по контуру {INNER:g}×{INNER:g} R{INNER_R:g}; "
+        f"верх — гладкая плоскость лица; "
         f"гнездо MX Ø{STEM_DIA:g}×{SOCKET_DEPTH:g}, крестовина "
         f"{CROSS_LEN:g}×{CROSS_ARM + CROSS_TOL:g}; "
-        f"окно светодиода {LED_W:g}×{LED_H:g} на y=+{LED_Y:g} у всех шести "
-        f"(сторона задаётся LED_Y: у свитча паз с юга — поменять знак); "
         f"зазор кейкап↔колодец {closest_points(part, caps[0]).distance:.2f} мм"
     )
     return assembly
