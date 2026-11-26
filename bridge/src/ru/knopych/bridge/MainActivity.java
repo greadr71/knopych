@@ -33,13 +33,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Экран моста на ГУ Haval Dargo. Наверху — сама кнопочная панель, но не во всю ширину: её лицо
- * нарисовано по модели из v1/modeling/ (145×25 мм, два колодца по три кейкапа, вырез под вертушок
- * ГУ), светодиоды горят по состоянию машины. Подписей под кейкапами нет: назначение кнопки
- * видно по её нажатию, а место отдано сценариям крупным кеглем.
- * Под панелью — панель настроек: сценарии, по нажатию на кейкап — подстраница этой кнопки
- * с разделами «нажатие» и «удержание». Состояние машины — в отладке.
- * Пиксельный шрифт — только подпись продукта: микрозаголовки, числа, клавиши, стрелки.
+ * Экран моста на ГУ Haval Dargo. Под шапкой — две вкладки: ПАНЕЛЬ и СЦЕНАРИИ.
+ * Панель занимает всё поле экрана и нарисована по модели из v2/modeling/ (90×53,3 мм: ручка
+ * Ø28 у левого края, шесть кейкапов 17 мм шагом 19 в блоке 3×2 справа). Состояния на панели
+ * нет: тап по кейкапу открывает карточку этой кнопки с разделами «нажатие» и «удержание»,
+ * возврат — шапка «← Назад» (как и у подстраницы сценария). Вкладка сценариев — три строки: подогрев в холод, тема при
+ * включении, автояркость. Состояние машины — в отладке.
+ * Пиксельный шрифт — только подпись продукта: вкладки, микрозаголовки, числа, клавиши, стрелки.
  * Весь читаемый текст — IBM Plex Sans.
  * Отступы под системные панели GWM: prefs ui_pad_left / ui_pad_top (команда ui_pad <слева> <сверху>).
  * Связь и журнал — отладка, по умолчанию скрыты (prefs ui_diag).
@@ -47,27 +47,30 @@ import java.util.regex.Pattern;
  */
 public class MainActivity extends Activity implements Bridge.StateListener {
     // Палитра: графит #0F1115, волосок #23262E, кейкап #1B1F26 с ободом #8F3F17 и чернилами #121418.
-    private static final int BG = 0xFF0F1115,      // фон и дно колодца
+    private static final int BG = 0xFF0F1115,      // фон
             LINE = 0xFF23262E,                     // волосок
-            KEY = 0xFF1B1F26,                      // боковина кейкапа, грань клавиши
-            ON = 0xFFD66024,                       // светодиод, выбранный кейкап
+            KEY = 0xFF1B1F26,                      // боковина кейкапа, грань клавиши, ручка
+            ON = 0xFFD66024,                       // выбранный кейкап, включённая клавиша
             RIM = 0xFF8F3F17,                      // обод клавиши-действия
             INK = 0xFF121418,                      // текст на оранжевом
             TEXT = 0xFFF2EAE4,
             DIM = 0xFFBDB2A8,
             FAINT = 0xFF948A81,
             QUIET = 0xFF7E756D,                    // пояснение: тише третичного
-            PLATE = 0xFF1A1E25,                    // лицо короба
-            CAPTOP = 0xFF262B34,                   // верх кейкапа
-            HOLE = 0xFF0A0C10;                     // погасший светодиод
+            PLATE = 0xFF1A1E25,                    // лицо панели
+            CAPTOP = 0xFF262B34;                   // верх кейкапа, верх ручки
 
-    /** Названия кнопок панели, слева направо. Прописными: микрозаголовок карточки. */
+    /** Названия кнопок панели по номерам: верх 1·2·3, низ 4·5·6. Прописными: микрозаголовок карточки. */
     private static final String[] KEY_NAMES = {
             "ПОЛОЖЕНИЕ 1", "ПОЛОЖЕНИЕ 2", "ПОЛОЖЕНИЕ 3",
             "ПОДОГРЕВ ВОДИТЕЛЯ", "ЛОБОВОЕ СТЕКЛО", "ПОДОГРЕВ ПАССАЖИРА"};
 
-    /** Страницы панели настроек: 0 — сценарии, 1..6 — кнопка панели, 7..9 — сценарии. */
-    private static final int PAGE_SCEN = 0, PAGE_AUTO = 7, PAGE_THEME = 8, PAGE_BRIGHT = 9;
+    /**
+     * Страницы: панель, отладка, сценарии с подстраницами, карточки кнопок подряд с PAGE_CARD.
+     * Номера идут так, что подстраница — это «больше PAGE_SCEN», а карточка — «не меньше PAGE_CARD».
+     */
+    private static final int PAGE_PANEL = 0, PAGE_DIAG = 1, PAGE_SCEN = 2,
+            PAGE_AUTO = 3, PAGE_THEME = 4, PAGE_BRIGHT = 5, PAGE_CARD = 6;
 
     /** Пиксельный шрифт из res/font — подпись продукта. */
     private Typeface pixel;
@@ -85,18 +88,25 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Строка состояния машины: живёт в отладке, а не на главном экране. */
     private TextView stateView;
 
-    /** Открытая страница настроек: 0 — сценарии, 1..6 — кнопка панели, 7..9 — сценарии. */
+    /** Открытая страница: PAGE_* — панель, отладка, сценарии, их подстраницы, карточки кнопок. */
     private int open;
-    private final LinearLayout[] zones = new LinearLayout[10];
+    private final LinearLayout[] zones = new LinearLayout[12];
     private ScrollView settingsScroll;
     /** Затухание у нижней кромки: подсказывает, что ниже есть ещё. */
     private View settingsFade;
-    /** Липкая шапка: микрозаголовок «СЦЕНАРИИ» или возврат «‹ Назад». */
+    /** Шапка с возвратом: показывается только на подстраницах. */
+    private LinearLayout stickyBar, headRow;
+    /** Микрозаголовок шапки: «ПАНЕЛЬ» у карточки, «Назад» у подстраницы сценария. */
     private TextView stickyHead;
-    /** Стрелка возврата «‹»: глиф пиксельного шрифта. */
+    /** Стрелка возврата «←»: глиф пиксельного шрифта. */
     private TextView backArrow;
-    private LinearLayout stickyBar;
-    /** Высота липкой шапки, dp: микрозаголовок 30 sp. */
+    /** Вкладки ПАНЕЛЬ и СЦЕНАРИИ: подпись и подчёркивание активной. */
+    private View tabsRow;
+    private final TextView[] tabText = new TextView[2];
+    private final View[] tabUnder = new View[2];
+    /** Высота вкладки, dp: строка подписи и подчёркивание 2 dp. */
+    private static final int TAB_H = 40;
+    /** Высота шапки с возвратом, dp: микрозаголовок 30 sp. */
     private static final int STICKY = 60;
     /** Высота кейкапа, dp: надпись 26 sp из IBM Plex стоит в нём по центру. */
     private static final int KEY_H = 76;
@@ -128,7 +138,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
 
     // отладка
     private TextView diagBtn, netView, logView;
-    private Button brightBtn;
     private ScrollView diagScroll;
 
     // ответ на долгую команду
@@ -208,20 +217,13 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         root.setPadding(padL, padT, dp(20), dp(14));
 
         root.addView(header());
+        root.addView(tabs());
 
-        // Панель — справка, а не герой экрана: во всю ширину она съедала треть высоты ГУ,
-        // а подписи рядом с ней всё равно не читались. Ширина — три десятых содержимого, по
-        // центру; высота следует из пропорции лица короба 145:25, а не задаётся отдельно.
-        panel = new Panel();
-        int contentW = m.widthPixels - padL - dp(20);
-        int panelW = Math.min(contentW, Math.max(dp(260), Math.round(contentW * 0.3f)));
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(
-                panelW, Math.round(panelW * Panel.HMM / Panel.WMM));
-        pp.gravity = Gravity.CENTER_HORIZONTAL;
-        root.addView(panel, pp);
-
-        // Панель настроек под панелью: сценарии, сценарий или карточка нажатого кейкапа.
+        // Одно поле под вкладками: панель, сценарии или отладка — по одной за раз.
         FrameLayout area = new FrameLayout(this);
+        panel = new Panel();
+        area.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         settingsScroll = scroll(settingsColumn());
         settingsScroll.setFillViewport(true);
         settingsScroll.setOnScrollChangeListener((v, x, y, ox, oy) -> updateFade());
@@ -234,22 +236,21 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         LinearLayout stick = column();
         stickyBar = stick;
         stick.setBackgroundColor(BG);
-        // Шапка несёт возврат: стрелка влево и слово «Назад» — одна цель на всю ширину.
-        LinearLayout headRow = new LinearLayout(this);
+        // Шапка несёт возврат: стрелка влево и слово — одна цель на всю ширину.
+        headRow = new LinearLayout(this);
         headRow.setOrientation(LinearLayout.HORIZONTAL);
         headRow.setGravity(Gravity.CENTER_VERTICAL);
         headRow.setPadding(GUT, 0, 0, 0);
         headRow.setBackground(sel(0x00000000, KEY));
-        headRow.setOnClickListener(v -> page(PAGE_SCEN));
         backArrow = arrow("←", arrowPx(ARROW_BACK_DP), FAINT);
         // рядом строчные буквы, их масса ниже середины строки: стрелку на 1 dp вниз — по оптике
         backArrow.setTranslationY(dp(1));
         headRow.addView(backArrow);
-        // «СЦЕНАРИИ» и «Назад» — один и тот же микрозаголовок: меняется только слово
+        // «ПАНЕЛЬ» и «Назад» — один и тот же микрозаголовок: меняется только слово
         stickyHead = micro("");
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.leftMargin = dp(8);
+        hp.leftMargin = dp(14); // стрелка и слово не слипаются: у «←» нет правого пробела
         headRow.addView(stickyHead, hp);
         stick.addView(headRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(STICKY)));
@@ -281,7 +282,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
 
         setDiag(bridge.prefs().getBoolean("ui_diag", false), false);
         render();
-        page(PAGE_SCEN);
         return root;
     }
 
@@ -336,18 +336,61 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         return h;
     }
 
-    // --- панель: лицо короба по модели из v1/modeling/
+    /**
+     * Вкладки под шапкой. Высота 40 dp — подпись и подчёркивание под ней; активная — TEXT
+     * с чертой, неактивная — FAINT. Оранжевый здесь не используется: он значит «включено»,
+     * а вкладка — просто место.
+     */
+    private View tabs() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        // 14 dp воздуха под шапкой: без него вкладки липли к «КНОПЫЧ 0.50» одной кучей
+        row.setPadding(GUT, dp(14), 0, 0);
+        row.addView(tab("ПАНЕЛЬ", PAGE_PANEL, 0),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(TAB_H)));
+        row.addView(tab("СЦЕНАРИИ", PAGE_SCEN, 1),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(TAB_H)));
+        tabsRow = row;
+        return row;
+    }
+
+    /** Вкладка: подпись над подчёркиванием, тап открывает её страницу. */
+    private View tab(String label, final int n, int i) {
+        LinearLayout c = column();
+        TextView t = pix(label, 20, FAINT);
+        t.setLetterSpacing(0.1f);
+        // подпись тянется на всю высоту вкладки: цель пальца — вся полоса, не строка текста
+        c.addView(t, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, 0, 1f));
+        View u = new View(this);
+        u.setBackgroundColor(TEXT);
+        u.setVisibility(View.INVISIBLE);
+        // Черта — по ширине подписи: MATCH_PARENT внутри WRAP_CONTENT-колонки растянул бы
+        // вкладку на всю строку и вытолкнул вторую за экран.
+        t.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        c.addView(u, new LinearLayout.LayoutParams(t.getMeasuredWidth(), dp(2)));
+        c.setPadding(dp(18), 0, dp(18), 0);
+        c.setBackground(sel(0x00000000, KEY)); // отклик на касание — как у строк сценариев
+        c.setOnClickListener(v -> page(n));
+        tabText[i] = t;
+        tabUnder[i] = u;
+        return c;
+    }
+
+    // --- панель: лицо панели по модели из v2/modeling/
 
     /**
-     * Лицо панели видом спереди: короб 145×25 мм со скруглением 6 мм, рамка 3 мм, два колодца
-     * по три кейкапа (шаг 18 мм, кейкап 17 мм, верх 14 мм), полукруглый вырез под вертушок ГУ
-     * Ø30 мм по центру нижней кромки. Всё в миллиметрах модели и масштабируется по ширине вида.
-     * Цвет несёт только состояние: зажжённый светодиод и обод выбранного кейкапа.
+     * Лицо панели видом спереди: 90×53,3 мм со скруглением R8, ручка Ø28 в (16; 26,65) и шесть
+     * кейкапов 17 мм шагом 19 в блоке 3×2 справа (v2/modeling/niche_panel.py: OPEN_X, OPEN_Y,
+     * NICHE_CORNER_R, button_centers, knob_center). Все числа — в миллиметрах модели; вид
+     * масштабируется по меньшей стороне поля и центрируется по обеим осям.
+     * Состояния на панели нет: цвет несёт только обводка кейкапа, чья карточка открыта.
      */
     private final class Panel extends View {
-        static final float WMM = 145f, HMM = 25f;
-        /** Центры окон свитчей по X, мм. */
-        private final float[] cx = {11f, 29f, 47f, 98f, 116f, 134f};
+        private static final float WMM = 90f, HMM = 53.3f;
+        /** Центры кейкапов, мм: 1·2·3 сверху, 4·5·6 снизу. */
+        private final float[] cx = {41f, 60f, 79f, 41f, 60f, 79f};
+        private final float[] cy = {17.15f, 17.15f, 17.15f, 36.15f, 36.15f, 36.15f};
         /**
          * Длинная сторона иконки, мм (из build_keycaps.py). У слотов 10 мм — это длинная сторона
          * сиденья: цифра стоит на нём и выходит за его верх на доли миллиметра, поэтому bbox
@@ -357,11 +400,8 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         /** Пропорция контура иконки: у слотов по общим границам сиденья и цифры. */
         private final float[] iconAspect = {290.3f / 230.61f, 291.74f / 232.47f, 290.45f / 233.38f,
                 525f / 447f, 380f / 242f, 525f / 447f};
-        /** Сдвиг центра иконки на юг от центра кейкапа, мм: иконка держится дальше от светодиода. */
-        private final float[] iconDown = {2.3f, 2.3f, 2.3f, 1.3f, 2.3f, 1.3f};
         private final Drawable[] icons = new Drawable[6];
-        /** 1 — светодиод горит, 0 — погас (неизвестное состояние тоже не горит). */
-        final int[] led = new int[6];
+        /** Индекс кейкапа, чья карточка открыта; -1 — никакая. */
         int selected = -1;
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -390,40 +430,57 @@ public class MainActivity extends Activity implements Bridge.StateListener {
             }
         }
 
-        @Override protected void onDraw(Canvas c) {
-            s = getWidth() / WMM;
-            float w = WMM * s, h = HMM * s;
-            float oy = (getHeight() - h) / 2f;
+        /** Воздух по краям поля, dp: панель не прилипает к вкладкам и кромкам. */
+        private final int air = dp(24);
 
-            // лицо короба
+        /** Масштаб вида: по меньшей стороне поля минус воздух, чтобы лицо встало целиком. */
+        private void fit() {
+            s = Math.max(0f, Math.min((getWidth() - 2 * air) / WMM, (getHeight() - 2 * air) / HMM));
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            fit();
+            float w = WMM * s, h = HMM * s;
+            float ox = (getWidth() - w) / 2f, oy = (getHeight() - h) / 2f;
+
+            // лицо панели
             p.setStyle(Paint.Style.FILL);
             p.setColor(PLATE);
-            r.set(0, oy, w, oy + h);
-            c.drawRoundRect(r, 6 * s, 6 * s, p);
-            // кромка лица: без неё силуэт короба теряется на фоне
+            r.set(ox, oy, ox + w, oy + h);
+            c.drawRoundRect(r, 8 * s, 8 * s, p);
+            // кромка лица: без неё силуэт панели теряется на фоне
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(thin);
             p.setColor(LINE);
-            c.drawRoundRect(r, 6 * s, 6 * s, p);
+            c.drawRoundRect(r, 8 * s, 8 * s, p);
             p.setStyle(Paint.Style.FILL);
 
-            // два колодца: кейкап 17 мм + зазор 0,5 мм
+            // ручка: диск Ø28, накатка 44 рисками от R11 до R13,6, верх Ø21,6
+            float kx = ox + 16f * s, ky = oy + 26.65f * s;
+            p.setColor(KEY);
+            c.drawCircle(kx, ky, 14f * s, p);
+            // кромка ручки: KEY и PLATE расходятся на 1/255, без волоска ручка сливается с лицом
+            p.setColor(LINE);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(thin);
+            c.drawCircle(kx, ky, 14f * s - thin / 2f, p);
+            p.setStyle(Paint.Style.FILL);
             p.setColor(BG);
-            for (int i = 0; i < 6; i += 3) {
-                r.set((cx[i] - 9f) * s, oy + 3.5f * s, (cx[i + 2] + 9f) * s, oy + 21.5f * s);
-                c.drawRoundRect(r, 2 * s, 2 * s, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(thin, 0.5f * s));
+            for (int i = 0; i < 44; i++) {
+                double a = 2 * Math.PI * i / 44;
+                float dx = (float) Math.cos(a), dy = (float) Math.sin(a);
+                c.drawLine(kx + 11f * s * dx, ky + 11f * s * dy,
+                        kx + 13.6f * s * dx, ky + 13.6f * s * dy, p);
             }
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(CAPTOP);
+            c.drawCircle(kx, ky, 10.8f * s, p);
 
-            // вырез под вертушок ГУ: полуокружность Ø30 мм, центр на нижней кромке лица.
-            // Только вырез — никакой головки, кромки и риски: ручка живёт в железе, не на экране.
-            float kx = 72.5f * s, ky = oy + h, kr = 15f * s;
-            p.setColor(BG);
-            r.set(kx - kr, ky - kr, kx + kr, ky + kr);
-            c.drawArc(r, 180f, 180f, true, p);
-
-            // шесть кейкапов: боковина 17×17, верх 14×14, светодиод на 5 мм севернее центра
+            // кейкапы: боковина 17×17, верх 16×16, гравировка по центру
             for (int i = 0; i < 6; i++) {
-                float x = cx[i] * s, y = oy + 12.5f * s;
+                float x = ox + cx[i] * s, y = oy + cy[i] * s;
                 p.setColor(KEY);
                 r.set(x - 8.5f * s, y - 8.5f * s, x + 8.5f * s, y + 8.5f * s);
                 c.drawRoundRect(r, 2 * s, 2 * s, p);
@@ -434,22 +491,19 @@ public class MainActivity extends Activity implements Bridge.StateListener {
                 c.drawRoundRect(r, 2 * s, 2 * s, p);
                 p.setStyle(Paint.Style.FILL);
 
-                // верх кейкапа поднят на 1,2 мм: клавиша видна чуть сверху
-                float ty = y - 1.2f * s;
                 p.setColor(CAPTOP);
-                r.set(x - 7 * s, ty - 7 * s, x + 7 * s, ty + 7 * s);
-                c.drawRoundRect(r, 1.5f * s, 1.5f * s, p);
+                r.set(x - 8 * s, y - 8 * s, x + 8 * s, y + 8 * s);
+                c.drawRoundRect(r, 1.6f * s, 1.6f * s, p);
 
                 Drawable d = icons[i];
                 if (d != null) {
                     float iw = iconW[i] * s, ih = iw / iconAspect[i];
-                    float iy = ty + iconDown[i] * s;
-                    bounds.set(Math.round(x - iw / 2), Math.round(iy - ih / 2),
-                            Math.round(x + iw / 2), Math.round(iy + ih / 2));
+                    bounds.set(Math.round(x - iw / 2), Math.round(y - ih / 2),
+                            Math.round(x + iw / 2), Math.round(y + ih / 2));
                     d.setBounds(bounds);
-                    // гравировка не подсвечивается: состояние несёт только светодиод
-                    d.setColorFilter(led[i] == 1 ? TEXT : DIM, PorterDuff.Mode.SRC_IN);
-                    // подогрев водителя — та же иконка, спинка в другую сторону
+                    // гравировка не подсвечивается: состояние на панели не показываем
+                    d.setColorFilter(DIM, PorterDuff.Mode.SRC_IN);
+                    // у водителя сиденье с другой стороны (как в плашке), пассажир — как нарисовано
                     boolean mirror = i == 3;
                     if (mirror) {
                         c.save();
@@ -458,31 +512,23 @@ public class MainActivity extends Activity implements Bridge.StateListener {
                     d.draw(c);
                     if (mirror) c.restore();
                 }
-
-                // цифра слота — часть контура сиденья (kc_seat1..3), красится вместе с ним
-
-                p.setColor(led[i] == 1 ? ON : HOLE);
-                float ly = y - 5 * s;
-                r.set(x - 2 * s, ly - 0.8f * s, x + 2 * s, ly + 0.8f * s);
-                c.drawRoundRect(r, 0.8f * s, 0.8f * s, p);
             }
         }
 
-        /** Кейкап под точкой (1..6) или 0. */
+        /** Кейкап под точкой (1..6) или 0; точка — в координатах вида, со сдвигом центрирования. */
         private int under(float px, float py) {
-            float oy = (getHeight() - HMM * s) / 2f;
-            py -= oy;
+            px -= (getWidth() - WMM * s) / 2f;
+            py -= (getHeight() - HMM * s) / 2f;
             for (int i = 0; i < 6; i++) {
-                if (Math.abs(px - cx[i] * s) <= 8.5f * s && Math.abs(py - 12.5f * s) <= 8.5f * s)
+                if (Math.abs(px - cx[i] * s) <= 8.5f * s && Math.abs(py - cy[i] * s) <= 8.5f * s)
                     return i + 1;
             }
             return 0;
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
-            float s2 = getWidth() / WMM;
-            if (s2 <= 0) return false;
-            s = s2;
+            if (getWidth() <= 0 || getHeight() <= 0) return false;
+            fit();
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     pressed = under(e.getX(), e.getY());
@@ -492,7 +538,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
                 case MotionEvent.ACTION_UP:
                     if (pressed > 0 && under(e.getX(), e.getY()) == pressed) {
                         performClick();
-                        selectCard(pressed);
+                        page(PAGE_CARD + pressed - 1); // карточка кнопки
                     }
                     pressed = -1;
                     return true;
@@ -509,14 +555,14 @@ public class MainActivity extends Activity implements Bridge.StateListener {
 
     private View settingsColumn() {
         LinearLayout c = column();
-        // сверху место под липкую шапку: содержимое уезжает под неё, шапка остаётся
-        c.setPadding(0, dp(STICKY) + thin, 0, 0);
+        // Шапку с возвратом подстраницы держат сами: у главной вкладки сценариев шапки нет,
+        // и её строки стоят сразу под вкладками.
         zones[PAGE_SCEN] = (LinearLayout) scenarios();
         c.addView(zones[PAGE_SCEN], new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         for (int n = 1; n <= 6; n++) {
-            zones[n] = (LinearLayout) card(n);
-            c.addView(zones[n]);
+            zones[PAGE_CARD + n - 1] = (LinearLayout) card(n);
+            c.addView(zones[PAGE_CARD + n - 1]);
         }
         zones[PAGE_AUTO] = (LinearLayout) autoPage();
         c.addView(zones[PAGE_AUTO]);
@@ -530,7 +576,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     private View scenarios() {
         LinearLayout l = column();
         // Свободная высота колонки уходит в воздух под строками: строки держат свою высоту
-        // и стоят сразу под шапкой секции — дыра между шапкой и первой строкой читается сбоем.
+        // и стоят сразу под вкладками — дыра над первой строкой читается сбоем.
         l.setPadding(GUT, 0, 0, 0);
         autoState = pix("—", 24, FAINT);
         autoBrief = text("", 28, FAINT, false);
@@ -599,7 +645,8 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Карточка кнопки панели: раздел «нажатие» и раздел «удержание» — прямое управление. */
     private View card(int n) {
         LinearLayout c = column();
-        c.setPadding(GUT, 0, 0, dp(18));
+        // сверху место под шапку с возвратом «← Назад»
+        c.setPadding(GUT, dp(STICKY) + thin, 0, dp(18));
 
         // Заголовок карточки — читаемым шрифтом: «КНОПКА 6 · ПОДОГРЕВ ПАССАЖИРА» пиксельным
         // в 30 sp вдвое шире строки, а мелким он не читался.
@@ -673,27 +720,34 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         return row;
     }
 
-    /** Показать страницу: 0 — сценарии, 1..6 — кнопка панели, 7..9 — сценарии. */
+    /**
+     * Показать страницу: PANEL — панель на всё поле, DIAG — отладка, SCEN — сценарии,
+     * AUTO/THEME/BRIGHT — их подстраницы, PAGE_CARD и далее — карточки кнопок 1..6.
+     */
     private void page(int n) {
         open = n;
         for (int i = 0; i < zones.length; i++)
-            zones[i].setVisibility(open == i ? View.VISIBLE : View.GONE);
+            if (zones[i] != null) zones[i].setVisibility(open == i ? View.VISIBLE : View.GONE);
+        boolean onPanel = n == PAGE_PANEL;
         if (panel != null) {
-            panel.selected = n >= 1 && n <= 6 ? n - 1 : -1;
+            panel.setVisibility(onPanel && !diag ? View.VISIBLE : View.GONE);
+            // обводка остаётся и после возврата: видно, чью карточку открывали
+            if (n >= PAGE_CARD) panel.selected = n - PAGE_CARD;
             panel.invalidate();
         }
+        settingsScroll.setVisibility(onPanel || diag ? View.GONE : View.VISIBLE);
+        diagScroll.setVisibility(diag ? View.VISIBLE : View.GONE);
+        // шапка с возвратом — только на подстраницах; отладка забирает и её, и вкладки
+        stickyBar.setVisibility(n > PAGE_SCEN && !diag ? View.VISIBLE : View.GONE);
+        tabsRow.setVisibility(diag ? View.GONE : View.VISIBLE);
+        updateTabs();
         updateHead();
-        if (settingsScroll != null) settingsScroll.scrollTo(0, 0);
+        settingsScroll.scrollTo(0, 0);
         updateFade(); // scrollTo колбэка не даёт: новая страница может быть ниже старой
-        if (settingsScroll != null) settingsScroll.post(this::updateFade); // и ещё раз после раскладки новой страницы
-        if (n == 4 && bright < 0) readBright();
+        settingsScroll.post(this::updateFade); // и ещё раз после раскладки новой страницы
+        if (n == PAGE_CARD + 3 && bright < 0) readBright(); // карточка 4 — там яркость
         // яркость могли поменять руками: открытие подстраницы перечитывает её, а не показывает старое
         if (n == PAGE_BRIGHT) readBright();
-    }
-
-    /** Тап по кейкапу: его карточка; повторный тап по тому же кейкапу — назад к сценариям. */
-    private void selectCard(int n) {
-        page(open == n ? PAGE_SCEN : n);
     }
 
     /** Яркость ГУ не приходит в снимке состояния: читаем её командой. */
@@ -741,7 +795,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Подраздел «подогрев в холод»: та же шапка с возвратом, ниже — поля сценария. */
     private View autoPage() {
         LinearLayout c = column();
-        c.setPadding(GUT, 0, GUT, dp(18));
+        c.setPadding(GUT, dp(STICKY) + thin, GUT, dp(18));
 
         TextView head = micro("ПОДОГРЕВ В ХОЛОД");
         head.setTextColor(DIM);
@@ -791,7 +845,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Подраздел «тема при включении». */
     private View themePage() {
         LinearLayout c = column();
-        c.setPadding(GUT, 0, GUT, dp(18));
+        c.setPadding(GUT, dp(STICKY) + thin, GUT, dp(18));
 
         TextView head = micro("ТЕМА ПРИ ВКЛЮЧЕНИИ");
         head.setTextColor(DIM);
@@ -821,7 +875,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Подраздел «автояркость по ночи»: тумблер и что сейчас стоит в машине. */
     private View brightPage() {
         LinearLayout c = column();
-        c.setPadding(GUT, 0, GUT, dp(18));
+        c.setPadding(GUT, dp(STICKY) + thin, GUT, dp(18));
 
         TextView head = micro("АВТОЯРКОСТЬ ПО НОЧИ");
         head.setTextColor(DIM);
@@ -861,13 +915,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         stateView = text("…", 18, TEXT, false);
         stateView.setPadding(0, 0, 0, dp(10));
         l.addView(stateView);
-        // Диагностика: видно, меняется ли яркость при записи и от штатного ползунка.
-        brightBtn = key("ЯРКОСТЬ 2 С: ВЫКЛ", v -> {
-            bridge.brightnessMonitor(!bridge.brightnessMonitorOn());
-            render();
-        });
-        l.addView(brightBtn, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H)));
         l.addView(microhead("СВЯЗЬ", dp(16)));
         netView = text("…", 18, TEXT, false);
         netView.setLineSpacing(dp(3), 1f);
@@ -885,9 +932,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     /** Показать/скрыть связь и журнал; состояние запоминается в prefs "ui_diag". */
     private void setDiag(boolean on, boolean save) {
         diag = on;
-        settingsScroll.setVisibility(on ? View.GONE : View.VISIBLE);
-        stickyBar.setVisibility(on ? View.GONE : View.VISIBLE);
-        diagScroll.setVisibility(on ? View.VISIBLE : View.GONE);
         diagBtn.setText(on ? "СКРЫТЬ" : "ОТЛАДКА");
         diagBtn.setTextColor(on ? ON : FAINT);
         GradientDrawable d = new GradientDrawable();
@@ -896,6 +940,8 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         if (on) d.setStroke(thin, RIM);
         diagBtn.setBackground(d);
         if (save) bridge.prefs().edit().putBoolean("ui_diag", on).apply();
+        // «СКРЫТЬ» возвращает на панель: отладка — гость, а не второй экран
+        page(on ? PAGE_DIAG : PAGE_PANEL);
         if (on) refreshSlow();
     }
 
@@ -905,12 +951,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         Bridge.State s = bridge.state();
 
         if (stateView != null) stateView.setText(stateLine(s));
-        if (brightBtn != null) {
-            boolean mon = bridge.brightnessMonitorOn();
-            brightBtn.setText(mon ? "ЯРКОСТЬ 2 С: ВКЛ" : "ЯРКОСТЬ 2 С: ВЫКЛ");
-            face(brightBtn, mon);
-        }
-        lights(s);
 
         boolean auto = bridge.autoEnabled();
         autoKey.setText(auto ? "Включён" : "Включить");
@@ -971,17 +1011,6 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         }
     }
 
-    /** Светодиоды панели: слоты памяти, подогревы, лобовое. Неизвестное не горит. */
-    private void lights(Bridge.State s) {
-        if (panel == null) return;
-        for (int i = 0; i < 3; i++)
-            panel.led[i] = i < s.seatMemory.length && s.seatMemory[i] == 2 ? 1 : 0; // 2 = слот активен, 1 = только сохранён
-        panel.led[3] = s.seatDriver > 0 ? 1 : 0;
-        panel.led[4] = s.windshield == 1 ? 1 : 0;
-        panel.led[5] = s.seatPassenger > 0 ? 1 : 0;
-        panel.invalidate();
-    }
-
     /** Состояние машины одной тихой строкой: только то, что известно, иначе одна фраза. */
     private String stateLine(Bridge.State s) {
         StringBuilder b = new StringBuilder();
@@ -1025,7 +1054,7 @@ public class MainActivity extends Activity implements Bridge.StateListener {
     }
 
     private void cmd(final String c, final String arg) {
-        // долгие команды показывают ответ; короткие видны по светодиодам и клавишам
+        // долгие команды показывают ответ; короткие видны по клавишам
         if (c.equals("auto_test")) showResult("Проверяю сценарий…");
         else if (c.equals("theme")) showResult("Ставлю тему…");
         new Thread(() -> {
@@ -1050,12 +1079,26 @@ public class MainActivity extends Activity implements Bridge.StateListener {
         resultWrap.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
-    /** Шапка секции: микрозаголовок «СЦЕНАРИИ» или возврат «‹ Назад» с подстраницы. */
+    /**
+     * Шапка с возвратом на подстранице — всегда «← Назад»: карточка возвращает на панель,
+     * подстраница сценария — к сценариям. Слово «ПАНЕЛЬ» дублировало бы вкладку над шапкой.
+     */
     private void updateHead() {
         if (stickyHead == null) return;
-        boolean sub = open != PAGE_SCEN;
+        boolean sub = open > PAGE_SCEN;
         backArrow.setVisibility(sub ? View.VISIBLE : View.GONE);
-        stickyHead.setText(sub ? "Назад" : "СЦЕНАРИИ");
+        stickyHead.setText("Назад");
+        headRow.setOnClickListener(v -> page(open >= PAGE_CARD ? PAGE_PANEL : PAGE_SCEN));
+    }
+
+    /** Активная вкладка: панель с карточками и отладкой — ПАНЕЛЬ, сценарии с подстраницами — СЦЕНАРИИ. */
+    private void updateTabs() {
+        boolean scen = open >= PAGE_SCEN && open <= PAGE_BRIGHT;
+        for (int i = 0; i < tabText.length; i++) {
+            boolean on = (i == 1) == scen; // 0 — ПАНЕЛЬ, 1 — СЦЕНАРИИ
+            if (tabText[i] != null) tabText[i].setTextColor(on ? TEXT : FAINT);
+            if (tabUnder[i] != null) tabUnder[i].setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        }
     }
 
     // ---------- мелочи ----------

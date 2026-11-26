@@ -3,8 +3,6 @@ package ru.knopych.bridge;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -56,23 +54,6 @@ final class Bridge implements Car.Listener {
     NetServer net;
     private final SharedPreferences prefs;
     private final ArrayDeque<String> log = new ArrayDeque<>();
-
-    // мониторинг яркости (диагностика): пишет яркость в журнал раз в 2 с
-    private volatile boolean brightMon;
-    private final Handler brightHandler = new Handler(Looper.getMainLooper());
-    /** Чтение яркости блокирующее: тик только планирует его в worker, иначе ANR. */
-    private final Runnable brightTick = new Runnable() {
-        @Override public void run() {
-            if (!brightMon) return;
-            worker.execute(() -> {
-                int v = brightness();
-                String dn;
-                try { int m = car.getDayNight(); dn = m < 0 ? "dn:нет" : "dn=" + (m == 1 ? "ночь" : "день"); } catch (Throwable t) { dn = "dn:ошибка"; }
-                note((v < 0 ? "яркость: не прочитать" : "яркость=" + v) + " " + dn + " auto_bright=" + onOff(autoBright()));
-            });
-            brightHandler.postDelayed(this, 2000);
-        }
-    };
 
     // состояние автосценария (только из потока worker)
     private int lastPower = -1;
@@ -1182,15 +1163,6 @@ final class Bridge implements Car.Listener {
         } catch (Throwable t) {
             return String.format(Locale.US, "prop 0x%08x: %s", id, t);
         }
-    }
-
-    boolean brightnessMonitorOn() { return brightMon; }
-
-    void brightnessMonitor(boolean on) {
-        brightMon = on;
-        brightHandler.removeCallbacks(brightTick); // без этого повторное включение даёт вторую петлю
-        if (on) brightHandler.post(brightTick);
-        note("мониторинг яркости: " + (on ? "вкл" : "выкл"));
     }
 
     // ---------- рассылка состояния (экран, ESP, MacroDroid) ----------

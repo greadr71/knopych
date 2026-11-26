@@ -294,7 +294,8 @@ final class Plaque {
         return row;
     }
 
-    /** Иконка кейкапа; pas — зеркалим: у пассажира сиденье с другой стороны. */    private static ImageView icon(Context ctx, String name, int wDp, int hDp, boolean mirror) {
+    /** Иконка кейкапа; mirror — отражаем по X: у водителя сиденье с другой стороны. */
+    private static ImageView icon(Context ctx, String name, int wDp, int hDp, boolean mirror) {
         ImageView iv = new ImageView(ctx);
         int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
         if (id != 0) iv.setImageResource(id);
