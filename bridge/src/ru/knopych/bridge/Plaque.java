@@ -100,8 +100,11 @@ final class Plaque {
             int cur = Math.max(1, Math.min(3, slot));
             LinearLayout row = new LinearLayout(c);
             row.setOrientation(LinearLayout.HORIZONTAL);
+            // по умолчанию вложенный ряд — MATCH_PARENT: окно жмётся по подписи, и третий кейкап режется
+            row.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
             for (int i = 1; i <= 3; i++) {
-                // кейкап 290×231: 130×104 держит пропорции, VectorDrawable тянется по bounds
+                // кейкап 290×231: ячейка 130×104, пропорции держит сам drawable — FIT_CENTER считает по его размеру
                 ImageView ic = icon(c, "kc_seat" + i, 130, 104, false);
                 LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) ic.getLayoutParams();
                 if (i > 1) p.leftMargin = dp(c, 7);   // зазор 14 dp между иконками, края без полей

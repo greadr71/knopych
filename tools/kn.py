@@ -5,7 +5,7 @@
 
   tools/kn.py find                 найти ГУ в сети и запомнить адрес
   tools/kn.py token 123-456        запомнить токен (виден на экране «Кнопыч», блок «Отладка»)
-  tools/kn.py status               любая команда моста: status, log, seat_driver 3, wifi_adb on…
+  tools/kn.py status               любая команда моста: status, log, seat_driver 3, ble_mac AA:BB:CC:DD:EE:FF…
   tools/kn.py install [apk]        обновить мост (по умолчанию bridge/apk/knopych-bridge-system.apk)
   tools/kn.py logcat [строк]       журнал ГУ в logs/wifi-logcat.txt
   tools/kn.py shot [файл]          скриншот экрана ГУ в logs/shot-<дата>.png

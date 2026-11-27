@@ -103,8 +103,15 @@ LED-команды (`leds`, `local`, `state`) и BLE-характеристик�
 
 ## Сборка и прошивка (Mac)
 
-Один раз: `brew install arduino-cli`, добавить URL пакета ESP32 (`https://espressif.github.io/arduino-esp32/package_esp32_index.json`),
-`arduino-cli core install esp32:esp32` (~1–1,5 ГБ).
+Один раз: `brew install arduino-cli` и ядро ESP32 версии 3.x (~1–1,5 ГБ):
+
+```bash
+arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32@3.3.12
+```
+
+На ядре 2.x скетч не собирается: нужны `rgbLedWrite` и BLE-колбэк с `ble_gap_conn_desc` из NimBLE.
 
 ```bash
 ./build.sh                                        # собрать v2/firmware/knopych-panel
@@ -117,7 +124,7 @@ SKETCH=v2/firmware/pin-scan ./build.sh upload         # проверка пин�
 
 `build.sh` подставляет FQBN сам:
 `esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=default,PSRAM=disabled`
-(4 МБ флеш, USB CDC включён, PSRAM выключен — `default_4MB` в ядре нет).
+(4 МБ флеш, USB CDC включён, PSRAM выключен; схема разделов `default` — варианта `default_4MB` в ядре нет).
 Порт — первый из `/dev/cu.usbmodem*`, `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*`; другой задаётся `PORT=/dev/cu.xxx`.
 Если прошивка не стартует: зажать **BOOT**, нажать **RST**, отпустить BOOT, повторить `upload`.
 
