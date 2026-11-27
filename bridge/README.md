@@ -1,4 +1,4 @@
-# «Кнопыч» — приложение-мост (v0.50)
+# «Кнопыч» — приложение-мост (v0.51)
 
 Приложение на ГУ. Включает подогревы командами Aptiv, теми же, что шлёт штатный экран
 климата.
@@ -136,6 +136,9 @@ adb shell am broadcast -a ru.knopych.bridge.CMD -n ru.knopych.bridge/.CommandRec
 ## Установка моста
 
 **Первый раз — с флешки, кабель не нужен** (проверено):
+
+**Готовый APK — в [Releases](https://github.com/greadr71/knopych/releases)** (`knopych-bridge-system.apk`);
+собирать из исходников не обязательно.
 
 1. `./bridge/build.sh`, взять `bridge/apk/knopych-bridge-system.apk` (запасной — `knopych-bridge-sig.apk`).
 2. APK — на флешку FAT32. Вынуть из левого USB ГУ всё остальное.

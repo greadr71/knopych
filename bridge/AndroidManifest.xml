@@ -3,8 +3,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ru.knopych.bridge"
     @SHARED_USER@
-    android:versionCode="50"
-    android:versionName="0.50">
+    android:versionCode="51"
+    android:versionName="0.51">
 
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
 
